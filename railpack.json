@@ -12,19 +12,17 @@
     },
     "build": {
       "inputs": [
+        ".",
         { "step": "setup-libwebp" }
       ],
-      "commands": ["..."]
+      "commands": ["go build -ldflags=-w -s -o out"]
     }
   },
   "deploy": {
     "startCommand": "./out",
     "inputs": [
-      "...",
-      {
-        "step": "setup-libwebp",
-        "include": ["/app/libwebp"]
-      }
+      { "step": "build", "include": ["/app/out"] },
+      { "step": "setup-libwebp", "include": ["/app/libwebp"] }
     ]
   }
 }
