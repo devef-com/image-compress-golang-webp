@@ -1,17 +1,20 @@
 {
   "$schema": "https://schema.railpack.com",
-  "build": {
-    "beforeBuild": [
-      "curl -L https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0-linux-aarch64.tar.gz -o /tmp/libwebp.tar.gz",
-      "tar -xzf /tmp/libwebp.tar.gz -C /tmp",
-      "mkdir -p /app/libwebp",
-      "mv /tmp/libwebp-1.6.0-linux-aarch64/* /app/libwebp/",
-      "rm /tmp/libwebp.tar.gz",
-      "chmod +x /app/libwebp/bin/*"
-    ]
+  "steps": {
+    "build": {
+      "commands": [
+        "...",
+        "curl -L https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0-linux-aarch64.tar.gz -o /tmp/libwebp.tar.gz",
+        "tar -xzf /tmp/libwebp.tar.gz -C /tmp",
+        "mkdir -p /app/libwebp",
+        "mv /tmp/libwebp-1.6.0-linux-aarch64/* /app/libwebp/",
+        "rm /tmp/libwebp.tar.gz",
+        "chmod +x /app/libwebp/bin/*"
+      ],
+      "deployOutputs": ["/app/libwebp"]
+    }
   },
   "deploy": {
-    "startCommand": "./out",
-    "paths": ["/app/libwebp"]
+    "startCommand": "./out"
   }
 }
