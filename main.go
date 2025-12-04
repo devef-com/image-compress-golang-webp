@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,7 +17,21 @@ import (
 func main() {
 	// Load .env file
 	if err := godotenv.Load(); err != nil {
-		fmt.Println("Warning: .env file not found")
+		log.Println("Warning: .env file not found")
+	}
+
+	// Log the cwebp path on startup
+	cwebpPath, err := getCwebpPath()
+	if err != nil {
+		log.Printf("Warning: Failed to get cwebp path: %v", err)
+	} else {
+		log.Printf("Using cwebp at: %s", cwebpPath)
+		// Check if cwebp exists
+		if _, err := os.Stat(cwebpPath); os.IsNotExist(err) {
+			log.Printf("ERROR: cwebp binary not found at %s", cwebpPath)
+		} else {
+			log.Printf("cwebp binary found at %s", cwebpPath)
+		}
 	}
 
 	router := gin.Default()
@@ -29,6 +44,62 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
+	// Debug endpoint to check cwebp
+	router.GET("/debug", func(c *gin.Context) {
+		cwebpPath, err := getCwebpPath()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Check if file exists
+		info, statErr := os.Stat(cwebpPath)
+		exists := statErr == nil
+
+		// Try to get version
+		var version string
+		if exists {
+			cmd := exec.Command(cwebpPath, "-version")
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				version = fmt.Sprintf("error: %v - %s", err, string(output))
+			} else {
+				version = strings.TrimSpace(string(output))
+			}
+		}
+
+		// List /app/libwebp directory
+		var libwebpContents []string
+		libwebpDir := "/app/libwebp"
+		if entries, err := os.ReadDir(libwebpDir); err == nil {
+			for _, entry := range entries {
+				libwebpContents = append(libwebpContents, entry.Name())
+			}
+		} else {
+			libwebpContents = []string{fmt.Sprintf("error reading dir: %v", err)}
+		}
+
+		// List /app/libwebp/bin directory
+		var binContents []string
+		binDir := "/app/libwebp/bin"
+		if entries, err := os.ReadDir(binDir); err == nil {
+			for _, entry := range entries {
+				binContents = append(binContents, entry.Name())
+			}
+		} else {
+			binContents = []string{fmt.Sprintf("error reading dir: %v", err)}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"cwebpPath":       cwebpPath,
+			"exists":          exists,
+			"fileInfo":        fmt.Sprintf("%+v", info),
+			"version":         version,
+			"libwebpContents": libwebpContents,
+			"binContents":     binContents,
+		})
+	})
+
 	// Convert and return WebP directly
 	router.POST("/convert", convertToWebP)
 
@@ -37,6 +108,7 @@ func main() {
 		port = "8080"
 	}
 
+	log.Printf("Starting server on port %s", port)
 	router.Run(":" + port)
 }
 
@@ -68,14 +140,18 @@ func convertToWebP(c *gin.Context) {
 	// Get the uploaded file
 	file, header, err := c.Request.FormFile("image")
 	if err != nil {
+		log.Printf("Error getting form file: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No image file provided"})
 		return
 	}
 	defer file.Close()
 
+	log.Printf("Received file: %s, size: %d", header.Filename, header.Size)
+
 	// Create a temporary directory for processing
 	tempDir, err := os.MkdirTemp("", "webp-convert-*")
 	if err != nil {
+		log.Printf("Error creating temp directory: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create temp directory"})
 		return
 	}
@@ -85,6 +161,7 @@ func convertToWebP(c *gin.Context) {
 	inputPath := filepath.Join(tempDir, header.Filename)
 	inputFile, err := os.Create(inputPath)
 	if err != nil {
+		log.Printf("Error creating input file: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save uploaded file"})
 		return
 	}
@@ -92,6 +169,7 @@ func convertToWebP(c *gin.Context) {
 	_, err = io.Copy(inputFile, file)
 	inputFile.Close()
 	if err != nil {
+		log.Printf("Error copying file: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to copy uploaded file"})
 		return
 	}
@@ -103,6 +181,7 @@ func convertToWebP(c *gin.Context) {
 	// Get cwebp binary path
 	cwebpPath, err := getCwebpPath()
 	if err != nil {
+		log.Printf("Error getting cwebp path: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -110,10 +189,13 @@ func convertToWebP(c *gin.Context) {
 	// Get quality parameter (default: 80)
 	quality := c.DefaultQuery("quality", "80")
 
+	log.Printf("Converting %s to WebP with quality %s using %s", inputPath, quality, cwebpPath)
+
 	// Convert to WebP using cwebp
 	cmd := exec.Command(cwebpPath, "-q", quality, inputPath, "-o", outputPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		log.Printf("Error converting image: %v, output: %s", err, string(output))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to convert image",
 			"details": string(output),
@@ -121,12 +203,17 @@ func convertToWebP(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Conversion successful, reading output file")
+
 	// Read the converted WebP file
 	webpData, err := os.ReadFile(outputPath)
 	if err != nil {
+		log.Printf("Error reading converted file: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read converted file"})
 		return
 	}
+
+	log.Printf("Sending WebP file: %s, size: %d bytes", outputFilename, len(webpData))
 
 	// Set response headers and send the WebP file
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", outputFilename))
