@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -23,9 +24,43 @@ func main() {
 	// Set max upload size (10 MB)
 	router.MaxMultipartMemory = 10 << 20
 
+	// Health check endpoint
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	// Convert and return WebP directly
 	router.POST("/convert", convertToWebP)
 
-	router.Run(":8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	router.Run(":" + port)
+}
+
+// getCwebpPath returns the path to cwebp binary based on environment
+func getCwebpPath() (string, error) {
+	// Check LIBWEBP_PATH environment variable first
+	libwebpPath := os.Getenv("LIBWEBP_PATH")
+
+	if libwebpPath != "" {
+		// If it's an absolute path, use it directly
+		if strings.HasPrefix(libwebpPath, "/") {
+			return filepath.Join(libwebpPath, "bin", "cwebp"), nil
+		}
+
+		// Otherwise, construct relative to working directory
+		workDir, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("failed to get working directory: %w", err)
+		}
+		return filepath.Join(workDir, libwebpPath, "bin", "cwebp"), nil
+	}
+
+	// Default path for Railway deployment
+	return "/app/libwebp/bin/cwebp", nil
 }
 
 // convertToWebP handles image upload and converts it to WebP format
@@ -65,25 +100,18 @@ func convertToWebP(c *gin.Context) {
 	outputFilename := filenameWithoutExt(header.Filename) + ".webp"
 	outputPath := filepath.Join(tempDir, outputFilename)
 
-	// Get libwebp path from environment
-	libwebpPath := os.Getenv("LIBWEBP_PATH")
-	if libwebpPath == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "LIBWEBP_PATH environment variable not set"})
-		return
-	}
-
-	// Get the working directory to construct absolute path
-	workDir, err := os.Getwd()
+	// Get cwebp binary path
+	cwebpPath, err := getCwebpPath()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get working directory"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Construct the cwebp binary path
-	cwebpPath := filepath.Join(workDir, libwebpPath, "bin", "cwebp")
+	// Get quality parameter (default: 80)
+	quality := c.DefaultQuery("quality", "80")
 
 	// Convert to WebP using cwebp
-	cmd := exec.Command(cwebpPath, "-q", "80", inputPath, "-o", outputPath)
+	cmd := exec.Command(cwebpPath, "-q", quality, inputPath, "-o", outputPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
