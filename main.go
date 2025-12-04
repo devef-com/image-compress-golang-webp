@@ -131,8 +131,8 @@ func getCwebpPath() (string, error) {
 		return filepath.Join(workDir, libwebpPath, "bin", "cwebp"), nil
 	}
 
-	// Default path for Railway deployment
-	return "/app/libwebp/bin/cwebp", nil
+	// Default: use system cwebp (from apt package)
+	return "cwebp", nil
 }
 
 // convertToWebP handles image upload and converts it to WebP format
