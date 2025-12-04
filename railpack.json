@@ -8,20 +8,13 @@
         "mv /tmp/libwebp-1.6.0-linux-aarch64 /app/libwebp",
         "rm /tmp/libwebp.tar.gz",
         "chmod +x /app/libwebp/bin/*"
-      ]
-    },
-    "build": {
-      "inputs": [
-        ".",
-        { "step": "setup-libwebp" }
       ],
-      "commands": ["go build -ldflags=-w -s -o out"]
+      "assets": ["/app/libwebp"]
     }
   },
   "deploy": {
     "startCommand": "./out",
     "inputs": [
-      { "step": "build", "include": ["/app/out"] },
       { "step": "setup-libwebp", "include": ["/app/libwebp"] }
     ]
   }
