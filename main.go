@@ -91,7 +91,8 @@ func convertToWebP(c *gin.Context) {
 	quality := c.DefaultQuery("quality", "80")
 
 	// Convert to WebP using cwebp (from apt package)
-	cmd := exec.Command("cwebp", "-q", quality, inputPath, "-o", outputPath)
+	// -resize max_width 0 keeps aspect ratio, only resizes if wider than max_width
+	cmd := exec.Command("cwebp", "-q", quality, "-resize", "1200", "0", inputPath, "-o", outputPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
