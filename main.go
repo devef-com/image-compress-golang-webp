@@ -15,6 +15,21 @@ import (
 func main() {
 	router := gin.Default()
 
+	//TODO remove after adding domain
+	// CORS middleware
+	router.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	})
+
 	// Set max upload size (10 MB)
 	router.MaxMultipartMemory = 10 << 20
 
